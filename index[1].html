@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>html{color-scheme:light}body{margin:0;-webkit-text-size-adjust:100%}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Best Move Board</title>
+<style>
+  /* Layout: board + eval bar on the left, engine readout + controls on the right; stacks to one column on phones. */
+  :root{
+    --bg:#e8ebef; --surface:#ffffff; --surface-2:#f3f5f8;
+    --fg:#1a1f26; --muted:#5b6672; --line:#d4d9e0;
+    --accent:#2f6f6b; --accent-ink:#ffffff;
+    --best:#2f9e54; --warn:#c2603a;
+    --sq-light:#cbd2db; --sq-dark:#7b8a9c;
+    --sel:#e4c05a; --hint:rgba(47,158,84,.35);
+    --piece-w:#fbfdff; --piece-w-edge:#20262e; --piece-b:#12161b; --piece-b-edge:#cfd7e0;
+    --evalw:#f4f6f9; --evalb:#20262e;
+    --shadow:0 1px 2px rgba(20,28,40,.08),0 8px 24px rgba(20,28,40,.08);
+    --font-d:"Fraunces",Georgia,serif;
+    --font-b:"IBM Plex Sans",system-ui,sans-serif;
+    --font-m:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --bg:#13161b; --surface:#1b2026; --surface-2:#222932;
+    --fg:#e7ecf2; --muted:#98a3af; --line:#2c333d;
+    --accent:#4fb3ac; --accent-ink:#06211f;
+    --best:#54c178; --warn:#e08a63;
+    --sq-light:#5c6672; --sq-dark:#39414c;
+    --sel:#d8b24e; --hint:rgba(84,193,120,.32);
+    --piece-w:#f2f6fa; --piece-w-edge:#10141a; --piece-b:#0b0e12; --piece-b-edge:#aeb8c4;
+    --evalw:#eef2f6; --evalb:#10141a;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.45);
+    color-scheme:dark;
+  }}
+  :root[data-theme="dark"]{
+    --bg:#13161b; --surface:#1b2026; --surface-2:#222932;
+    --fg:#e7ecf2; --muted:#98a3af; --line:#2c333d;
+    --accent:#4fb3ac; --accent-ink:#06211f;
+    --best:#54c178; --warn:#e08a63;
+    --sq-light:#5c6672; --sq-dark:#39414c;
+    --sel:#d8b24e; --hint:rgba(84,193,120,.32);
+    --piece-w:#f2f6fa; --piece-w-edge:#10141a; --piece-b:#0b0e12; --piece-b-edge:#aeb8c4;
+    --evalw:#eef2f6; --evalb:#10141a;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.45);
+    color-scheme:dark;
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--fg);font-family:var(--font-b);line-height:1.45}
+  .wrap{max-width:980px;margin:0 auto;padding-block:18px;padding-left:16px;padding-right:16px}
+
+  header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+  .mark{font-family:var(--font-d);font-weight:600;font-size:clamp(22px,4.5vw,30px);letter-spacing:-.01em}
+  .mark b{color:var(--accent);font-weight:600}
+  .tag{font-size:12.5px;color:var(--muted)}
+  .lead{font-size:13.5px;color:var(--muted);margin:2px 0 16px;max-width:62ch}
+  .lead code{font-family:var(--font-m);font-size:12px;background:var(--surface-2);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+
+  .app{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px;align-items:start}
+  @media (max-width:760px){.app{grid-template-columns:1fr;gap:16px}}
+
+  /* ---- board ---- */
+  .boardwrap{display:grid;grid-template-columns:18px minmax(0,1fr);gap:8px}
+  .evalbar{position:relative;width:18px;border-radius:7px;overflow:hidden;border:1px solid var(--line);background:var(--evalb)}
+  .evalbar .white{position:absolute;left:0;right:0;bottom:0;background:var(--evalw);transition:height .35s ease}
+  .evalbar .mid{position:absolute;left:0;right:0;top:50%;height:1px;background:var(--accent);opacity:.5}
+  .board-area{position:relative}
+  .board{position:relative;display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);aspect-ratio:1/1;width:100%;border-radius:10px;overflow:hidden;box-shadow:var(--shadow);user-select:none;touch-action:manipulation}
+  .sq{position:relative;display:flex;align-items:center;justify-content:center}
+  .sq.light{background:var(--sq-light)}
+  .sq.dark{background:var(--sq-dark)}
+  .sq .co{position:absolute;font-size:9px;font-family:var(--font-m);opacity:.55;pointer-events:none}
+  .sq .co.f{right:3px;bottom:1px}
+  .sq .co.r{left:3px;top:1px}
+  .pc{font-size:min(8.6vw,58px);line-height:1;cursor:grab;pointer-events:none}
+  @media(min-width:760px){.pc{font-size:52px}}
+  .pc.w{color:var(--piece-w);text-shadow:0 0 1px var(--piece-w-edge),0 0 1px var(--piece-w-edge),.5px .5px 0 var(--piece-w-edge),-.5px -.5px 0 var(--piece-w-edge),.5px -.5px 0 var(--piece-w-edge),-.5px .5px 0 var(--piece-w-edge)}
+  .pc.b{color:var(--piece-b);text-shadow:0 0 1px var(--piece-b-edge),.5px .5px 0 var(--piece-b-edge),-.5px -.5px 0 var(--piece-b-edge),.5px -.5px 0 var(--piece-b-edge),-.5px .5px 0 var(--piece-b-edge)}
+  .sq.sel::after{content:"";position:absolute;inset:0;background:var(--sel);opacity:.5}
+  .sq.lastfrom::before,.sq.lastto::before{content:"";position:absolute;inset:0;background:var(--sel);opacity:.28}
+  .sq .dot{position:absolute;width:30%;height:30%;border-radius:50%;background:var(--hint)}
+  .sq .ring{position:absolute;inset:6%;border-radius:50%;box-shadow:inset 0 0 0 4px var(--hint)}
+  .sq.hot{cursor:pointer}
+  svg.arrows{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3}
+
+  /* ---- panel ---- */
+  .panel{display:flex;flex-direction:column;gap:14px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;box-shadow:var(--shadow)}
+  .best{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .best .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  .best .mv{font-family:var(--font-d);font-weight:600;font-size:34px;letter-spacing:-.01em;line-height:1}
+  .best .mv small{font-family:var(--font-m);font-weight:400;font-size:13px;color:var(--muted);letter-spacing:0}
+  .evalnum{font-family:var(--font-m);font-size:22px;font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+  .evalnum .who{display:block;font-family:var(--font-b);font-size:10.5px;font-weight:500;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+  .meta{display:flex;gap:14px;font-family:var(--font-m);font-size:11.5px;color:var(--muted);margin-top:8px;font-variant-numeric:tabular-nums}
+  .pv{font-family:var(--font-m);font-size:12.5px;color:var(--fg);margin-top:8px;word-break:break-word;line-height:1.7}
+  .alts{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+  .alt{display:flex;gap:10px;align-items:baseline;font-family:var(--font-m);font-size:12.5px;padding:5px 8px;border-radius:7px;background:var(--surface-2)}
+  .alt .e{min-width:52px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .alt .s{color:var(--fg)}
+  .status{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:7px;min-height:16px}
+  .spin{width:10px;height:10px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--accent);animation:sp .8s linear infinite;display:none}
+  .spin.on{display:inline-block}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  @media(prefers-reduced-motion:reduce){.spin{animation:none}.evalbar .white{transition:none}}
+
+  h3{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{border:0;background:var(--surface);color:var(--fg);font:inherit;font-size:12.5px;padding:7px 11px;cursor:pointer}
+  .seg button+button{border-left:1px solid var(--line)}
+  .seg button.on{background:var(--accent);color:var(--accent-ink)}
+  button.btn{border:1px solid var(--line);background:var(--surface);color:var(--fg);font:inherit;font-size:12.5px;padding:8px 12px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  button.btn:hover{border-color:var(--accent)}
+  button.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+  button.btn:focus-visible,.seg button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  label.ck{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--fg);cursor:pointer}
+  .fenrow{display:flex;gap:8px;margin-top:4px}
+  input.fen{flex:1;min-width:0;font-family:var(--font-m);font-size:11.5px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--fg)}
+  .err{color:var(--warn);font-size:12px;min-height:15px}
+  .palette{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-top:6px}
+  .palette button{aspect-ratio:1/1;border:1px solid var(--line);border-radius:7px;background:var(--surface-2);font-size:24px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
+  .palette button.on{outline:2px solid var(--accent);outline-offset:1px}
+  .palette .pw{color:var(--piece-w);text-shadow:0 0 1px var(--piece-w-edge),.5px .5px 0 var(--piece-w-edge),-.5px -.5px 0 var(--piece-w-edge)}
+  .palette .pb{color:var(--piece-b);text-shadow:0 0 1px var(--piece-b-edge),.5px .5px 0 var(--piece-b-edge)}
+  .hint-sm{font-size:11.5px;color:var(--muted);margin-top:8px}
+  .foot{margin-top:18px;font-size:11px;color:var(--muted);text-align:center}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="mark">Best Move <b>Board</b></div>
+    <span class="tag">Stockfish&nbsp;19 · runs in your browser</span>
+  </header>
+  <p class="lead">Paste a position (the <code>FEN</code> Claude reads from your screenshot), or set the pieces up yourself, and the engine marks the strongest move with a green arrow. Click pieces to play the moves out and keep analyzing.</p>
+
+  <div class="app">
+    <!-- board + eval -->
+    <div class="boardwrap">
+      <div class="evalbar" title="Evaluation — white's share of the bar">
+        <div class="white" id="evalWhite" style="height:50%"></div>
+        <div class="mid"></div>
+      </div>
+      <div class="board-area">
+        <div class="board" id="board"></div>
+        <svg class="arrows" id="arrows" viewBox="0 0 8 8" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <marker id="ah" markerWidth="3" markerHeight="3" refX="1.6" refY="1.5" orient="auto">
+              <path d="M0,0 L3,1.5 L0,3 z" fill="var(--best)"></path>
+            </marker>
+          </defs>
+          <line id="arrowLine" x1="0" y1="0" x2="0" y2="0" stroke="var(--best)" stroke-width="0.17" stroke-linecap="round" marker-end="url(#ah)" opacity="0"></line>
+        </svg>
+      </div>
+    </div>
+
+    <!-- panel -->
+    <div class="panel">
+      <div class="card">
+        <div class="best">
+          <div>
+            <div class="lbl">Best move</div>
+            <div class="mv" id="bestMove">—</div>
+          </div>
+          <div class="evalnum" id="evalNum">0.0<span class="who" id="evalWho">even</span></div>
+        </div>
+        <div class="status"><span class="spin" id="spin"></span><span id="status">Loading engine…</span></div>
+        <div class="pv" id="pv"></div>
+        <div class="alts" id="alts"></div>
+        <div class="meta"><span id="metaDepth">depth —</span><span id="metaTurn"></span></div>
+      </div>
+
+      <div class="card">
+        <h3>Engine</h3>
+        <div class="row" style="align-items:center;justify-content:space-between">
+          <label class="ck"><input type="checkbox" id="autoAnalyze" checked> Auto-analyze</label>
+          <button class="btn primary" id="analyzeBtn">Analyze</button>
+        </div>
+        <div class="row" style="margin-top:10px;align-items:center">
+          <span class="lbl" style="font-size:11px;color:var(--muted)">Think</span>
+          <div class="seg" id="timeSeg">
+            <button data-t="500">0.5s</button>
+            <button data-t="1000" class="on">1s</button>
+            <button data-t="2000">2s</button>
+            <button data-t="5000">5s</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Position</h3>
+        <div class="row">
+          <div class="seg" id="turnSeg" title="Side to move">
+            <button data-turn="w" class="on">White to move</button>
+            <button data-turn="b">Black</button>
+          </div>
+        </div>
+        <div class="row" style="margin-top:9px">
+          <button class="btn" id="flipBtn">Flip board</button>
+          <button class="btn" id="startBtn">Start position</button>
+          <button class="btn" id="undoBtn">Undo</button>
+        </div>
+        <div class="fenrow">
+          <input class="fen" id="fenInput" spellcheck="false" placeholder="Paste FEN here…" value="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1">
+          <button class="btn" id="loadBtn">Load</button>
+        </div>
+        <div class="err" id="fenErr"></div>
+      </div>
+
+      <div class="card">
+        <h3>Edit pieces</h3>
+        <label class="ck"><input type="checkbox" id="editMode"> Free-placement mode</label>
+        <div id="editTools" hidden>
+          <div class="palette" id="palette"></div>
+          <div class="row" style="margin-top:8px">
+            <button class="btn" id="clearBtn">Clear board</button>
+          </div>
+          <div class="hint-sm">Pick a piece (or the eraser), then click squares. Set the side to move above, then turn this off to analyze.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="foot">Analysis only — the engine never touches your games. Stockfish 19 Lite (GPLv3) &amp; chess.js, running entirely in this page.</p>
+</div>
+
+<script type="module">
+import { Chess } from './chess.js';
+
+const GLY = {p:'♟',n:'♞',b:'♝',r:'♜',q:'♛',k:'♚'};
+const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+const el = id => document.getElementById(id);
+const boardEl = el('board'), arrowLine = el('arrowLine');
+
+let game = new Chess();          // play-mode source of truth
+let orient = 'w';                // 'w' = white at bottom
+let selected = null;             // selected square in play mode
+let lastMove = null;             // {from,to}
+let thinkMs = 1000;
+let auto = true;
+let editing = false;
+let editPiece = 'wp';            // selected palette piece / 'erase'
+let editBoard = null;            // 8x8 array when editing, [rank8..rank1][fileA..H]
+let history = [];                // fen history for undo
+
+/* ---------------- Engine ---------------- */
+let engine, engineReady=false, searching=false, pendingFen=null;
+let lines = {};                  // multipv index -> {depth,scoreCp,mate,pv:[uci]}
+let curFen = START;
+
+function bootEngine(){
+  try{
+    engine = new Worker('sf.js');
+  }catch(e){ setStatus('Could not start engine: '+e.message); return; }
+  engine.onmessage = e => {
+    const line = typeof e.data === 'string' ? e.data : (e.data && e.data.data) || '';
+    handleUci(line);
+  };
+  engine.onerror = e => setStatus('Engine error: '+(e.message||'unknown'));
+  send('uci');
+}
+function send(cmd){ if(engine) engine.postMessage(cmd); }
+
+function handleUci(line){
+  if(line.startsWith('uciok')){
+    send('setoption name MultiPV value 3');
+    send('setoption name UCI_LimitStrength value false');
+    send('isready');
+  } else if(line.startsWith('readyok')){
+    if(!engineReady){ engineReady=true; setStatus('Ready'); if(auto) analyze(); }
+  } else if(line.startsWith('info') && line.includes(' pv ')){
+    parseInfo(line);
+  } else if(line.startsWith('bestmove')){
+    searching=false; spin(false);
+    finishSearch(line.split(/\s+/)[1]);
+    if(pendingFen){ const f=pendingFen; pendingFen=null; runSearch(f); }
+  }
+}
+
+function parseInfo(line){
+  const t = line.split(/\s+/);
+  let depth=0, mpv=1, scoreCp=null, mate=null, pv=[];
+  for(let i=0;i<t.length;i++){
+    const k=t[i];
+    if(k==='depth') depth=+t[i+1];
+    else if(k==='multipv') mpv=+t[i+1];
+    else if(k==='score'){ if(t[i+1]==='cp') scoreCp=+t[i+2]; else if(t[i+1]==='mate') mate=+t[i+2]; }
+    else if(k==='pv'){ pv=t.slice(i+1); break; }
+  }
+  lines[mpv]={depth,scoreCp,mate,pv};
+  if(mpv===1) render(depth);
+}
+
+function analyze(){
+  if(!engineReady){ return; }
+  const fen = editing ? buildEditFen() : game.fen();
+  if(searching){ pendingFen=fen; send('stop'); return; }
+  runSearch(fen);
+}
+function runSearch(fen){
+  curFen=fen; lines={}; searching=true; spin(true); setStatus('Thinking…');
+  send('position fen '+fen);
+  send('go movetime '+thinkMs);
+}
+
+/* ---------------- Rendering ---------------- */
+function squaresInOrder(){
+  // returns [{sq, file, rank}] in DOM order (top-left first) for current orientation
+  const out=[];
+  const ranks = orient==='w' ? [8,7,6,5,4,3,2,1] : [1,2,3,4,5,6,7,8];
+  const files = orient==='w' ? ['a','b','c','d','e','f','g','h'] : ['h','g','f','e','d','c','b','a'];
+  for(const r of ranks) for(const f of files) out.push({sq:f+r,file:f,rank:r});
+  return out;
+}
+function pieceAt(sq){
+  if(editing){
+    const f=sq.charCodeAt(0)-97, r=+sq[1];
+    const cell=editBoard[8-r][f];
+    return cell; // null or {type,color}
+  }
+  return game.get(sq); // {type,color} or null
+}
+function drawBoard(){
+  boardEl.innerHTML='';
+  const order=squaresInOrder();
+  order.forEach(({sq,file,rank})=>{
+    const f=file.charCodeAt(0)-97, r=rank-1;
+    const d=document.createElement('div');
+    const dark=((f+r)%2===0);
+    d.className='sq '+(dark?'dark':'light');
+    d.dataset.sq=sq;
+    if(lastMove && !editing){ if(sq===lastMove.from) d.classList.add('lastfrom'); if(sq===lastMove.to) d.classList.add('lastto'); }
+    if(selected===sq) d.classList.add('sel');
+    // coordinate labels on edges
+    const isBottom = order.indexOf(order.find(o=>o.sq===sq))>=56;
+    const edgeFile = (orient==='w' ? rank===1 : rank===8);
+    const edgeRank = (orient==='w' ? file==='a' : file==='h');
+    if(edgeFile){ const c=document.createElement('span'); c.className='co f'; c.textContent=file; d.appendChild(c); }
+    if(edgeRank){ const c=document.createElement('span'); c.className='co r'; c.textContent=rank; d.appendChild(c); }
+    const p=pieceAt(sq);
+    if(p){ const s=document.createElement('span'); s.className='pc '+(p.color==='w'?'w':'b'); s.textContent=GLY[p.type]; d.appendChild(s); }
+    boardEl.appendChild(d);
+  });
+  drawHints();
+}
+function drawHints(){
+  if(editing||!selected) return;
+  const moves=game.moves({square:selected,verbose:true});
+  moves.forEach(m=>{
+    const cell=boardEl.querySelector('[data-sq="'+m.to+'"]');
+    if(!cell) return;
+    const mark=document.createElement('span');
+    mark.className = (game.get(m.to)? 'ring':'dot');
+    cell.appendChild(mark);
+  });
+}
+
+function render(depth){
+  const L1=lines[1];
+  if(!L1){ return; }
+  const stm = curFen.split(' ')[1]||'w';
+  // eval from white's perspective
+  let evalText, whoText, whitePov;
+  if(L1.mate!==null){
+    const mateForStm = L1.mate;
+    const mateWhite = stm==='w'? mateForStm : -mateForStm;
+    whitePov = mateWhite>0? 1e5 : -1e5;
+    evalText = 'M'+Math.abs(L1.mate);
+    whoText = mateWhite>0? 'white mates' : 'black mates';
+  } else {
+    const cpStm = L1.scoreCp||0;
+    const cpWhite = stm==='w'? cpStm : -cpStm;
+    whitePov = cpWhite;
+    const pawns=(cpWhite/100);
+    evalText=(pawns>0?'+':'')+pawns.toFixed(2);
+    whoText = Math.abs(cpWhite)<20? 'even' : (cpWhite>0?'white better':'black better');
+  }
+  el('evalNum').firstChild.nodeValue=evalText;
+  el('evalWho').textContent=whoText;
+  // eval bar height (white share)
+  let share;
+  if(Math.abs(whitePov)>=1e5) share = whitePov>0?100:0;
+  else share = 100/(1+Math.exp(-whitePov/320)); // logistic
+  el('evalWhite').style.height=share.toFixed(1)+'%';
+
+  // best move SAN + arrow
+  const best=L1.pv[0];
+  if(best){
+    const san=sanLine(curFen, L1.pv.slice(0,1));
+    el('bestMove').innerHTML = (san[0]||best)+' <small>'+best+'</small>';
+    drawArrow(best.slice(0,2), best.slice(2,4));
+  }
+  // principal variation
+  const pvSan=sanLine(curFen, L1.pv.slice(0,8));
+  el('pv').innerHTML = pvSan.length? '<span style="color:var(--muted)">Line:</span> '+numberPv(pvSan, stm) : '';
+  // alternatives
+  const alts=el('alts'); alts.innerHTML='';
+  [2,3].forEach(i=>{
+    const L=lines[i]; if(!L||!L.pv.length) return;
+    const e = fmtEval(L, stm);
+    const s = sanLine(curFen, L.pv.slice(0,1))[0]||L.pv[0];
+    const div=document.createElement('div'); div.className='alt';
+    div.innerHTML='<span class="e">'+e+'</span><span class="s">'+s+'</span>';
+    alts.appendChild(div);
+  });
+  el('metaDepth').textContent='depth '+(depth||L1.depth||'—');
+  el('metaTurn').textContent=(stm==='w'?'White':'Black')+' to move';
+}
+function fmtEval(L, stm){
+  if(L.mate!==null){ const w=stm==='w'?L.mate:-L.mate; return (w>0?'+M':'-M')+Math.abs(L.mate); }
+  const w=(stm==='w'?L.scoreCp:-L.scoreCp)/100; return (w>0?'+':'')+w.toFixed(2);
+}
+function sanLine(fen, uciArr){
+  const out=[]; let tmp;
+  try{ tmp=new Chess(fen); }catch(e){ return out; }
+  for(const u of uciArr){
+    const mv={from:u.slice(0,2),to:u.slice(2,4)}; if(u.length>4) mv.promotion=u[4];
+    try{ const m=tmp.move(mv); if(!m) break; out.push(m.san); }catch(e){ break; }
+  }
+  return out;
+}
+function numberPv(san, stm){
+  let out=[], n=1, white=(stm==='w');
+  for(let i=0;i<san.length;i++){
+    if(white) out.push('<b style="font-weight:600;color:var(--muted)">'+n+'.</b> '+san[i]);
+    else { if(i===0) out.push('<b style="font-weight:600;color:var(--muted)">'+n+'…</b> '+san[i]); else out.push(san[i]); n++; }
+    if(!white) {} else {}
+    if(!white){ }
+    white=!white; if(white) n = (i>0? n : n);
+  }
+  // simpler re-number
+  return renumber(san, stm);
+}
+function renumber(san, stm){
+  let parts=[], moveNo=1, white=(stm==='w');
+  let i=0;
+  if(!white){ parts.push('<b style="color:var(--muted)">'+moveNo+'…</b> '+san[0]); i=1; moveNo++; white=true; }
+  for(;i<san.length;i++){
+    if(white){ parts.push('<b style="color:var(--muted)">'+moveNo+'.</b> '+san[i]); white=false; }
+    else{ parts.push(san[i]); white=true; moveNo++; }
+  }
+  return parts.join(' ');
+}
+
+function drawArrow(from,to){
+  const c=sqCenter(from), d=sqCenter(to);
+  // shorten so head sits at target center-ish
+  arrowLine.setAttribute('x1',c.x); arrowLine.setAttribute('y1',c.y);
+  arrowLine.setAttribute('x2',d.x); arrowLine.setAttribute('y2',d.y);
+  arrowLine.setAttribute('opacity','0.92');
+}
+function clearArrow(){ arrowLine.setAttribute('opacity','0'); }
+function sqCenter(sq){
+  let f=sq.charCodeAt(0)-97, r=+sq[1]-1;
+  let x = orient==='w'? f : 7-f;
+  let y = orient==='w'? 7-r : r;
+  return {x:x+0.5, y:y+0.5};
+}
+
+function finishSearch(bm){
+  if(bm==='(none)'||!bm){ setStatus(game.isCheckmate?'': 'No legal move (check for mate/stalemate)'); }
+  else setStatus('Done');
+}
+
+/* ---------------- Interaction ---------------- */
+boardEl.addEventListener('click', e=>{
+  const cell=e.target.closest('.sq'); if(!cell) return;
+  const sq=cell.dataset.sq;
+  if(editing){ editClick(sq); return; }
+  // play mode
+  if(selected){
+    if(sq===selected){ selected=null; drawBoard(); return; }
+    const legal=game.moves({square:selected,verbose:true}).find(m=>m.to===sq);
+    if(legal){
+      const needsPromo = legal.promotion;
+      const mv={from:selected,to:sq}; if(needsPromo) mv.promotion='q';
+      pushHistory();
+      game.move(mv); lastMove={from:selected,to:sq}; selected=null;
+      syncFromGame(); afterPositionChange(); return;
+    }
+    // reselect if own piece
+    const p=game.get(sq);
+    if(p && p.color===game.turn()){ selected=sq; drawBoard(); return; }
+    selected=null; drawBoard(); return;
+  } else {
+    const p=game.get(sq);
+    if(p && p.color===game.turn()){ selected=sq; drawBoard(); }
+  }
+});
+
+function editClick(sq){
+  const f=sq.charCodeAt(0)-97, r=+sq[1];
+  if(editPiece==='erase'){ editBoard[8-r][f]=null; }
+  else { editBoard[8-r][f]={color:editPiece[0],type:editPiece[1]}; }
+  drawBoard();
+}
+
+/* ---------------- FEN / state plumbing ---------------- */
+function syncFromGame(){ el('fenInput').value=game.fen(); setTurnSeg(game.turn()); }
+function afterPositionChange(){ clearArrow(); drawBoard(); if(auto) analyze(); else setStatus('Press Analyze'); }
+function pushHistory(){ history.push(editing?buildEditFen():game.fen()); if(history.length>80) history.shift(); }
+
+function loadFen(fen){
+  fen=fen.trim();
+  try{
+    const g=new Chess(fen);
+    pushHistory();
+    game=g; selected=null; lastMove=null; editing=false; el('editMode').checked=false; el('editTools').hidden=true;
+    syncFromGame(); el('fenErr').textContent=''; afterPositionChange(); return true;
+  }catch(e){
+    el('fenErr').textContent='That FEN looks off — '+(e.message||'invalid').replace(/^Invalid FEN:\s*/,'');
+    return false;
+  }
+}
+
+/* edit board <-> fen */
+function gameToEditBoard(){
+  const arr=[]; for(let r=0;r<8;r++){arr.push(new Array(8).fill(null));}
+  const files=['a','b','c','d','e','f','g','h'];
+  for(let r=8;r>=1;r--) for(let fi=0;fi<8;fi++){ const p=game.get(files[fi]+r); if(p) arr[8-r][fi]={color:p.color,type:p.type}; }
+  return arr;
+}
+function buildEditFen(){
+  let rows=[];
+  for(let r=0;r<8;r++){
+    let row='',empty=0;
+    for(let f=0;f<8;f++){
+      const c=editBoard[r][f];
+      if(!c){empty++;}
+      else{ if(empty){row+=empty;empty=0;} const ch=c.type; row+= c.color==='w'?ch.toUpperCase():ch; }
+    }
+    if(empty) row+=empty; rows.push(row);
+  }
+  const stm=document.querySelector('#turnSeg button.on').dataset.turn;
+  return rows.join('/')+' '+stm+' - - 0 1';
+}
+
+/* ---------------- Controls ---------------- */
+el('timeSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  el('timeSeg').querySelectorAll('button').forEach(x=>x.classList.remove('on'));b.classList.add('on');thinkMs=+b.dataset.t;});
+el('turnSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return; setTurnSeg(b.dataset.turn);
+  if(!editing){ const parts=game.fen().split(' '); parts[1]=b.dataset.turn; parts[3]='-';
+    try{ game=new Chess(parts.join(' ')); }catch(err){ /* keep */ }
+    syncFromGame(); }
+  afterPositionChange();});
+function setTurnSeg(t){ el('turnSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x.dataset.turn===t)); }
+
+el('analyzeBtn').addEventListener('click',()=>analyze());
+el('autoAnalyze').addEventListener('change',e=>{auto=e.target.checked; if(auto) analyze();});
+el('flipBtn').addEventListener('click',()=>{orient=orient==='w'?'b':'w'; drawBoard(); if(lines[1]&&lines[1].pv[0]) drawArrow(lines[1].pv[0].slice(0,2),lines[1].pv[0].slice(2,4));});
+el('startBtn').addEventListener('click',()=>loadFen(START));
+el('loadBtn').addEventListener('click',()=>loadFen(el('fenInput').value));
+el('fenInput').addEventListener('keydown',e=>{if(e.key==='Enter')loadFen(el('fenInput').value);});
+el('undoBtn').addEventListener('click',()=>{ if(!history.length)return; const f=history.pop();
+  if(editing){ try{game=new Chess(f);}catch(e){} editBoard=gameToEditBoard(); } else { try{game=new Chess(f);}catch(e){return;} }
+  selected=null; lastMove=null; syncFromGame(); clearArrow(); drawBoard(); if(auto)analyze(); });
+
+el('editMode').addEventListener('change',e=>{
+  editing=e.target.checked; el('editTools').hidden=!editing; selected=null; clearArrow();
+  if(editing){ editBoard=gameToEditBoard(); setStatus('Editing — analysis paused'); }
+  else {
+    const fen=buildEditFen();
+    try{ game=new Chess(fen); el('fenErr').textContent=''; }
+    catch(err){ el('fenErr').textContent='Position needs both kings and a legal setup to analyze.'; }
+    syncFromGame();
+    afterPositionChange(); return;
+  }
+  drawBoard();
+});
+el('clearBtn').addEventListener('click',()=>{ editBoard=[]; for(let r=0;r<8;r++)editBoard.push(new Array(8).fill(null)); drawBoard(); });
+
+// palette build
+(function(){
+  const pal=el('palette'); const order=[['w','k'],['w','q'],['w','r'],['w','b'],['w','n'],['w','p'],['erase','']];
+  const order2=[['b','k'],['b','q'],['b','r'],['b','b'],['b','n'],['b','p']];
+  const mk=(color,type)=>{
+    const b=document.createElement('button');
+    if(color==='erase'){ b.textContent='✕'; b.dataset.pc='erase'; b.title='Eraser'; }
+    else{ b.textContent=GLY[type]; b.className=color==='w'?'pw':'pb'; b.dataset.pc=color+type; }
+    b.addEventListener('click',()=>{ editPiece=b.dataset.pc; pal.querySelectorAll('button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); });
+    return b;
+  };
+  order.forEach(([c,t])=>pal.appendChild(mk(c,t)));
+  order2.forEach(([c,t])=>pal.appendChild(mk(c,t)));
+  pal.querySelector('button').classList.add('on'); editPiece=pal.querySelector('button').dataset.pc;
+})();
+
+function spin(on){ el('spin').classList.toggle('on',on); }
+function setStatus(s){ el('status').textContent=s; }
+
+/* ---------------- boot ---------------- */
+game=new Chess(START);
+drawBoard();
+bootEngine();
+</script>
+
+</body>
+</html>
