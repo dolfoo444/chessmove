@@ -1,9 +1,0 @@
-This project bundles Stockfish (stockfish.js), which is licensed under the
-GNU General Public License version 3. As a combined work, this project is
-therefore distributed under the GNU General Public License version 3.
-
-Full text: https://www.gnu.org/licenses/gpl-3.0.txt
-
-Component licenses:
-- Stockfish / stockfish.js  — GPLv3  — https://github.com/nmrugg/stockfish.js
-- chess.js                  — BSD-2-Clause — https://github.com/jhlywa/chess.js
